@@ -3,6 +3,8 @@ package com.snipper.snipper_snippets.controllers;
 import java.util.ArrayList;
 import java.util.Optional;
 
+import com.snipper.snipper_snippets.JwtUtil;
+import com.snipper.snipper_snippets.models.AuthenticationRequest;
 import org.jasypt.encryption.StringEncryptor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,12 +31,14 @@ public class CrudController {
     private final SnippetRepository snippetRepository;
     private final StringEncryptor stringEncryptor;
     private final UserRepository userRepository;
+    private final JwtUtil jwtUtil;
     
 
-    public CrudController(SnippetRepository snippetRepository, StringEncryptor stringEncryptor, UserRepository userRepository) {
+    public CrudController(SnippetRepository snippetRepository, StringEncryptor stringEncryptor, UserRepository userRepository, JwtUtil jwtUtil) {
         this.snippetRepository = snippetRepository;
         this.userRepository = userRepository;
         this.stringEncryptor = stringEncryptor;
+        this.jwtUtil = jwtUtil;
     }
 
     @PostMapping("/snippets")
@@ -78,7 +82,7 @@ public class CrudController {
 
     }
 
-    @PostMapping("/snippets/users")
+    @PostMapping("/auth/register")
     public ResponseEntity<String> createUser(@RequestBody User user) {
         
         var findUser = userRepository.findByUsername(user.getUsername());
@@ -87,29 +91,29 @@ public class CrudController {
             return ResponseEntity.badRequest().body("User already exists");
         } else {
             var hashedPassword = BCrypt.withDefaults().hashToString(10, user.getPassword().toCharArray());
-            user.setPassword(hashedPassword.toString());
+            user.setPassword(hashedPassword);
             userRepository.save(user);
-            return ResponseEntity.ok().body("Created Successful");
+            return ResponseEntity.status(201).body("User registered Successfully");
         }
     }
 
-    @GetMapping("/snippets/users")
-    public ResponseEntity<String> getUser(@RequestBody User user) {
+    @PostMapping("/auth/login")
+    public ResponseEntity<String> getUser(@RequestBody AuthenticationRequest authenticationRequest) {
 
-        var foundUser = userRepository.findByUsername(user.getUsername());
+        var foundUser = userRepository.findByUsername(authenticationRequest.getUsername());
 
-        if (!foundUser.isPresent()) {
+        if (foundUser.isEmpty()) {
             return ResponseEntity.badRequest().body("Could not find user");
         } else {
-            var correctPassword = BCrypt.verifyer().verify(user.getPassword().toCharArray(), foundUser.get().getPassword().toCharArray());
+            var correctPassword = BCrypt.verifyer().verify(authenticationRequest.getPassword().toCharArray(), foundUser.get().getPassword().toCharArray());
 
             if (correctPassword.verified) {
-                return ResponseEntity.ok().body("Login successful");
+                return ResponseEntity.status(200).body(jwtUtil.generateToken(foundUser.get().getUsername()));
             } else {
-                return ResponseEntity.badRequest().body("Invalid Password");
+                return ResponseEntity.status(400).body("Invalid Password");
             }
         }
     }
-    
-    
+
+
 }
